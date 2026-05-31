@@ -119,7 +119,6 @@ OPENING_BUFFER_MINS    = 5     # No new entries before 09:35 ET
 # ──────────────────────────────────────────────
 
 INITIAL_CAPITAL        = 15_000.0
-PAPER_BALANCE          = 15_000.0
 COMPOUNDING_RATE       = 0.01
 MIN_TRADE_USD          = 10.0
 
@@ -179,7 +178,7 @@ MAX_OPEN_TRADES        = 2         # Max simultaneous positions across all symbo
 #  INFRASTRUCTURE
 # ──────────────────────────────────────────────
 
-HEARTBEAT_URL          = os.getenv("HEARTBEAT_URL", "https://hc-ping.com/YOUR-UUID")
+HEARTBEAT_URL          = os.getenv("HEARTBEAT_URL", "")
 HEARTBEAT_INTERVAL     = 60
 TELEGRAM_TOKEN         = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID       = os.getenv("TELEGRAM_CHAT_ID", "")

@@ -57,7 +57,6 @@ import numpy as np
 import pandas as pd
 
 from midas_config import MidasConfig
-from midas_risk import TradeSignal
 
 logger = logging.getLogger("midas.strategy")
 
@@ -252,7 +251,7 @@ def generate_signal(
         rsi       <  cfg.rsi_oversold
         and hist  >  hist_prev              # Histogram turning up
         and close >= vwap * 0.998          # Within 0.2% of VWAP (below)
-        and close <= vwap * 1.002          # Not already extended above
+        and close <= vwap * 1.000          # Not already extended above
         and htf_ok_long
     ):
         stop_loss   = round(close - atr * cfg.atr_stop_mult,   2)
@@ -271,7 +270,7 @@ def generate_signal(
     if (
         rsi       >  cfg.rsi_overbought
         and hist  <  hist_prev              # Histogram turning down
-        and close >= vwap * 0.998          # Near VWAP
+        and close >= vwap * 1.000          # Near VWAP
         and close <= vwap * 1.002
         and htf_ok_short
     ):
@@ -289,14 +288,3 @@ def generate_signal(
 
     return EntrySignal("none", close, 0, 0, atr, rsi, "No qualifying setup")
 
-
-# ══════════════════════════════════════════════════════════════════
-#  DATA HELPERS
-# ══════════════════════════════════════════════════════════════════
-
-def ohlcv_to_dataframe(raw: list) -> pd.DataFrame:
-    """Convert a ccxt-style [[ts_ms, o, h, l, c, v], ...] list to DataFrame."""
-    df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close", "volume"])
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-    df.set_index("timestamp", inplace=True)
-    return df.astype(float)

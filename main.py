@@ -87,6 +87,8 @@ class HeartbeatMonitor:
         self._task: Optional[asyncio.Task] = None
 
     async def _loop(self) -> None:
+        if not self.url:
+            return
         async with aiohttp.ClientSession() as session:
             while True:
                 try:
