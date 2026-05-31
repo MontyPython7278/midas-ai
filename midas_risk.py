@@ -240,14 +240,20 @@ class RiskManager:
 
     def _send_alert(self, message: str) -> None:
         """Send Telegram alert (non-blocking best-effort)."""
-        try:
-            import requests
-            from midas_config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-            if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
+        import threading
+        from midas_config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+        if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+            return
+
+        def _post() -> None:
+            try:
+                import requests
                 requests.post(
                     f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
                     json={"chat_id": TELEGRAM_CHAT_ID, "text": message},
                     timeout=5,
                 )
-        except Exception as e:
-            logger.debug(f"Alert failed (non-critical): {e}")
+            except Exception as e:
+                logger.debug(f"Alert failed (non-critical): {e}")
+
+        threading.Thread(target=_post, daemon=True).start()

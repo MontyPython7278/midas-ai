@@ -33,7 +33,7 @@ from typing import Optional
 import aiohttp
 import pandas as pd
 
-from midas_config import MidasConfig, PAPER_BALANCE
+from midas_config import MidasConfig
 from midas_risk import RiskManager
 from midas_strategy import EntrySignal
 
@@ -87,7 +87,7 @@ class PaperTradingEngine:
     def __init__(self, config: MidasConfig, risk_manager: RiskManager):
         self.cfg             = config
         self.rm              = risk_manager
-        self.balance         = PAPER_BALANCE
+        self.balance         = config.initial_capital
         self.positions: dict[str, OpenPosition] = {}
         self.trade_log: list[TradeResult]       = []
         self._trade_counter  = 0
