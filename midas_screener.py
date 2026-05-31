@@ -81,9 +81,8 @@ class SymbolScreener:
     Instantiated once and reused across ticks — caches shortability data.
     """
 
-    def __init__(self, config: MidasConfig, executor):
+    def __init__(self, config: MidasConfig):
         self.cfg      = config
-        self.executor = executor
         # Cache of symbol → shortable (True/False), populated once per session
         self._shortable_cache: dict[str, bool] = {}
 

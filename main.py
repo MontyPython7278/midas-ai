@@ -253,7 +253,7 @@ class MidasBot:
 
         self.market_guard = MarketHoursGuard(config, self.executor)
         self.pdt_guard    = PDTGuard(config)
-        self.screener     = SymbolScreener(config, self.executor)
+        self.screener     = SymbolScreener(config)
         self.heartbeat    = HeartbeatMonitor(HEARTBEAT_URL, HEARTBEAT_INTERVAL, self.log)
 
         self._running            = False
@@ -331,16 +331,16 @@ class MidasBot:
                 return
             # Try to get last prices; fall back to entry price if unavailable
             prices: dict[str, float] = {}
-            for sym in self.executor.open_symbols:
-                try:
-                    if isinstance(self.executor, PaperTradingEngine):
-                        # Use a data-only AlpacaExecutor for last price
-                        data_ex = AlpacaExecutor(self.cfg)
+            data_ex = AlpacaExecutor(self.cfg)
+            try:
+                for sym in self.executor.open_symbols:
+                    try:
                         df = await data_ex.fetch_ohlcv(sym, self.cfg.timeframe, limit=2)
                         prices[sym] = float(df["close"].iloc[-1])
-                        await data_ex.close()
-                except Exception:
-                    prices[sym] = 0.0   # Will use entry price in close_position
+                    except Exception:
+                        prices[sym] = 0.0   # Will use entry price in close_position
+            finally:
+                await data_ex.close()
             n = len(self.executor.positions)
             self.executor.close_all(prices, reason="eod_flatten")
             self.log.warning(f"📉 EOD: closed {n} position(s) before market close.")
