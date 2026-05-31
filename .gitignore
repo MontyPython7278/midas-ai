@@ -1,0 +1,42 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Compiled files
+*.pyc
+*_cpython-*.pyc
+*.so
+
+# Environment / secrets — NEVER commit API keys
+.env
+.env.local
+*.env
+
+# Midas AI runtime files
+logs/
+state/
+~/midas_ai/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor
+.cursor/
+.vscode/
+*.swp
+*.swo
+
+# Distribution
+dist/
+build/
+*.egg-info/

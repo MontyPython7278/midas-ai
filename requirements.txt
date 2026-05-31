@@ -1,0 +1,12 @@
+# Midas AI — Alpaca Edition
+# Install with: pip install -r requirements.txt
+
+aiohttp>=3.9.0           # Async HTTP client — all Alpaca API calls
+pandas>=2.0.0            # OHLCV data handling and indicator computation
+numpy>=1.26.0            # Numerical operations inside indicators
+requests>=2.31.0         # Sync HTTP for Telegram alerts (non-async helper)
+certifi>=2024.0.0        # SSL certificates — required for Python 3.14 on macOS
+
+# zoneinfo is built into Python 3.9+
+# If you are on Python 3.8 or earlier, uncomment the line below:
+# backports.zoneinfo>=0.2.1
