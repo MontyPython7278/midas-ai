@@ -1,262 +1,108 @@
-# Midas AI — Setup Guide (macOS + Cursor)
+# Midas AI
 
-This guide takes you from zero to a running paper trading bot.
-Follow every step in order. Do not skip ahead.
-
----
-
-## What you need before starting
-
-- A Mac with internet access
-- Cursor IDE (already installed)
-- An Alpaca account (free — paper trading only to start)
+An algorithmic mean-reversion trading system for US equities, built on Alpaca's paper trading API.
 
 ---
 
-## Step 1 — Create your Alpaca Paper Trading account
+## What it is
 
-1. Go to **https://alpaca.markets** and click **Get Started**
-2. Sign up with your email address (free account)
-3. Once logged in, click **Paper Trading** in the left sidebar
-4. Go to **Your API Keys** (top right of the paper dashboard)
-5. Click **Generate New Key**
-6. Copy both values and save them somewhere safe:
-   - **API Key ID** (looks like: `PKXXXXXXXXXXXXXX`)
-   - **Secret Key** (looks like: `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`)
-
-> ⚠️ These are your **paper** keys — they only work with fake money.
-> You will need separate live keys later if you ever go live.
+Midas AI is a Python trading bot that scans a 30-symbol watchlist of liquid US equities every market minute, identifies mean-reversion setups, and manages the full trade lifecycle — entry sizing, bracket orders, exit management, and daily risk limits. It runs on Alpaca's paper trading environment and is built and maintained solo as a learning and research project.
 
 ---
 
-## Step 2 — Open the project in Cursor
+## How it works
 
-1. Download and unzip `midas_ai_alpaca.zip`
-2. Open **Cursor**
-3. Go to **File → Open Folder**
-4. Select the `midas_ai` folder you just unzipped
+The strategy is **ATR-gated RSI mean-reversion with MACD confirmation**, using VWAP as the intraday reversion anchor.
 
-You should see these files in the left sidebar:
-```
-midas_ai/
-├── main.py
-├── midas_config.py
-├── midas_executor.py
-├── midas_risk.py
-├── midas_screener.py
-├── midas_strategy.py
-├── midas_backtest.py
-├── requirements.txt
-└── README.md
-```
+The core idea: on short timeframes (1m/5m), price tends to revert to the session VWAP rather than trend away from it indefinitely. The bot looks for moments when price has pulled away from VWAP, momentum is exhausted (RSI oversold/overbought), and is beginning to turn (MACD histogram inflecting) — then enters with a bracket order targeting the reversion.
+
+**Entry conditions (long example):**
+- ATR above a minimum threshold — filters out low-volatility, low-edge periods
+- RSI below 35 on the closed 1m bar
+- MACD histogram turning upward (momentum inflecting, not just at an extreme)
+- Price at or below VWAP (not already recovered past the anchor)
+- Higher-timeframe (5m) RSI not in confirmed downtrend
+
+**Risk and execution:**
+- Each trade risks at most 0.5% of current equity, sized dynamically
+- Notional position capped at 20% of equity regardless of stop distance
+- Stop-loss at entry ± 1.5× ATR; take-profit at entry ± 2.25× ATR (1:1.5 RR)
+- Maximum 2 simultaneous open positions
+
+**Seven-layer guard before any order is placed:**
+1. NYSE market hours (holiday-aware via Alpaca's `/v2/clock`)
+2. 5-minute opening buffer — skips the first 5 minutes of price discovery
+3. 15-minute EOD buffer — no new entries after 15:45 ET; all positions flattened by 16:00
+4. 3% daily-drawdown kill switch — halts all trading for the session if hit
+5. PDT guard — enforces FINRA's 3-day-trade-per-5-session limit at accounts below $25k
+6. Notional and risk caps in the risk manager
+7. Per-symbol shortability validation via Alpaca's asset endpoint
 
 ---
 
-## Step 3 — Open the terminal inside Cursor
+## Architecture
 
-1. In Cursor, go to **Terminal → New Terminal** (or press `` Ctrl+` ``)
-2. A terminal panel opens at the bottom of the screen
+| Module | Role |
+|---|---|
+| `midas_config.py` | Single source of truth — all constants and the `MidasConfig` dataclass injected into every other module |
+| `midas_strategy.py` | Pure functions: `add_indicators()` computes ATR, RSI, MACD, VWAP; `generate_signal()` evaluates one closed candle |
+| `midas_screener.py` | Fetches bars for all 30 symbols in two bulk API calls per tick (one per timeframe), scores and ranks signals |
+| `midas_risk.py` | `RiskManager` — position sizing, kill switch, daily drawdown tracking, compounding target, state persistence |
+| `midas_executor.py` | Two implementations: `PaperTradingEngine` (in-process simulation with slippage + fees) and `AlpacaExecutor` (live/paper REST client) |
+| `main.py` | Tick orchestrator — runs the 7-layer guard sequence every market minute, routes to screener and executor |
+| `dashboard.py` | Streamlit dashboard — reads `state.json`, `trades.csv`, and `equity_history.csv` for a live view of performance |
+| `midas_backtest.py` | Offline backtesting against historical OHLCV CSVs using the same strategy logic |
 
-### Check your Python version
+---
+
+## Tech stack
+
+- **Python 3.9+** — async/await throughout (`asyncio`, `aiohttp`)
+- **Alpaca API** — market data (IEX feed) and order execution
+- **pandas / numpy** — indicator computation and bar handling
+- **Streamlit** — live performance dashboard
+- **aiohttp** — all HTTP calls to Alpaca's REST API
+
+---
+
+## Status
+
+**This project is in paper trading validation. It is not running with real money.**
+
+The bot is currently accumulating paper trading sessions to evaluate whether the strategy has a genuine edge before any consideration of live deployment. No performance results are published here because a meaningful sample does not yet exist.
+
+> **Disclaimer:** This is a personal educational project. Nothing in this repository constitutes financial advice, a trading recommendation, or an invitation to invest. Algorithmic trading carries significant risk of capital loss. Do your own research.
+
+---
+
+## Setup
+
+Requires Python 3.9+, an [Alpaca](https://alpaca.markets) account (free), and paper trading API keys.
 
 ```bash
-python3 --version
-```
-
-You need **Python 3.9 or higher**. If you see 3.9, 3.10, 3.11, 3.12 — you're good.
-
-If you see Python 2.x or an error, install Python 3 from **https://python.org/downloads**
-
----
-
-## Step 4 — Create a virtual environment
-
-A virtual environment keeps this project's packages separate from everything
-else on your Mac. Always do this for Python projects.
-
-```bash
+# Clone and install
+git clone https://github.com/MontyPython7278/midas-ai.git
+cd midas-ai
 python3 -m venv venv
-```
-
-Now activate it:
-
-```bash
 source venv/bin/activate
-```
-
-Your terminal prompt should now start with `(venv)`. This means it's active.
-
-> Every time you open a new terminal for this project, run `source venv/bin/activate` first.
-
----
-
-## Step 5 — Install the dependencies
-
-```bash
 pip install -r requirements.txt
-```
 
-This installs aiohttp, pandas, numpy, and the other packages the bot needs.
-It will take about 30–60 seconds.
+# Set API keys (paper keys from app.alpaca.markets/paper/dashboard/overview)
+export ALPACA_API_KEY="your-key-id"
+export ALPACA_API_SECRET="your-secret-key"
 
----
+# Verify everything is wired up correctly
+python3 main.py --check
 
-## Step 6 — Set your API keys
-
-The bot reads your Alpaca keys from **environment variables** — this keeps
-them out of your code files (never paste keys directly into Python files).
-
-Run these two commands in your terminal, replacing the placeholder text
-with your actual keys from Step 1:
-
-```bash
-export ALPACA_API_KEY="PKXXXXXXXXXXXXXX"
-export ALPACA_API_SECRET="your-secret-key-here"
-```
-
-> ⚠️ These `export` commands only last for the current terminal session.
-> If you close the terminal and reopen it, you need to run them again.
-
-### Optional: Make the keys permanent
-
-To avoid re-entering them every session, add them to your shell profile.
-In the terminal:
-
-```bash
-echo 'export ALPACA_API_KEY="PKXXXXXXXXXXXXXX"' >> ~/.zshrc
-echo 'export ALPACA_API_SECRET="your-secret-key-here"' >> ~/.zshrc
-source ~/.zshrc
-```
-
----
-
-## Step 7 — Verify the setup
-
-Run this quick check to confirm Python can see your keys:
-
-```bash
-python3 -c "import os; print('Key set:', bool(os.getenv('ALPACA_API_KEY')))"
-```
-
-You should see: `Key set: True`
-
-Then confirm the packages installed correctly:
-
-```bash
-python3 -c "import aiohttp, pandas, numpy; print('All packages OK')"
-```
-
-You should see: `All packages OK`
-
----
-
-## Step 8 — Run the bot (paper mode)
-
-The bot defaults to paper trading. Run it with:
-
-```bash
+# Run the bot (paper mode by default)
 python3 main.py
 ```
 
-You will see output like this in the terminal:
+To add keys permanently, append the two `export` lines to `~/.zshrc`.
 
-```
-2024-01-15T14:30:00Z  INFO     [midas.main]  🚀 MIDAS AI — ALPACA PAPER
-2024-01-15T14:30:00Z  INFO     [midas.main]  Capital:   $15,000.00
-2024-01-15T14:30:00Z  INFO     [midas.main]  Symbols:   30 in watchlist
-2024-01-15T14:30:00Z  INFO     [midas.main]  Shorts:    ENABLED
-2024-01-15T14:30:00Z  INFO     [midas.main]  🔴 NYSE closed — tick skipped.
-```
-
-The last line is normal if the market is currently closed.
-The bot will run and wait. When the NYSE opens (9:30 AM ET on weekdays),
-it will start scanning symbols and generating signals.
-
----
-
-## Step 9 — Stop the bot
-
-Press **Ctrl+C** in the terminal. The bot will:
-1. Close any open paper positions
-2. Save its state to `~/midas_ai/state/state.json`
-3. Exit cleanly
-
----
-
-## Where your files are stored
-
-The bot creates these folders automatically on first run:
-
-| Location | Contents |
-|---|---|
-| `~/midas_ai/logs/bot.log` | Full trading log (rotates at 10MB) |
-| `~/midas_ai/state/state.json` | Account state — equity, peak, compounding day |
-
-To view the log in real time (while the bot is running, in a second terminal):
+To run the dashboard in a second terminal:
 
 ```bash
-tail -f ~/midas_ai/logs/bot.log
+source venv/bin/activate
+streamlit run dashboard.py
 ```
-
----
-
-## Understanding the output
-
-Each minute during market hours you'll see a block like this:
-
-```
-──── TICK #00042  09:47:00 ET  Watching 30 symbols ────
-Equity: $15,127.50  Peak: $15,210.00
-Screener: 2 signal(s): NVDA(L=0.82), AMD(S=0.71)
-📨 NVDA LONG  0.1234 sh @ ~$487.50  notional=$60.10  risk=0.401%
-📄 SIM ORDER  NVDA LONG  0.1234 sh  Entry ≈ $487.50  SL $480.00  TP $498.50
-Equity $15,127.50  |  Target $15,302.50  |  Gap -1.15%  |  PDT 1/3
-```
-
-| Field | Meaning |
-|---|---|
-| `Equity` | Current paper account value |
-| `Peak` | Highest equity ever reached |
-| `Screener` | Symbols with qualifying signals this tick |
-| `L` / `S` | Long / Short direction |
-| `0.82` | Signal quality score (0–1, higher = better) |
-| `notional` | Dollar value of the position |
-| `risk` | % of account at risk on this trade |
-| `PDT 1/3` | Day trades used / maximum allowed |
-| `Gap` | How far behind/ahead of the 1% daily target |
-
----
-
-## Frequently asked questions
-
-**Q: The bot says "NYSE closed" for the entire day.**
-A: Markets are closed on weekends and US public holidays. This is correct.
-
-**Q: I see "No qualifying signals this tick" every minute.**
-A: This is normal, especially early in validation. The strategy is selective
-by design — it only trades high-confidence setups. Fewer, better trades
-outperforms many mediocre ones.
-
-**Q: How do I check my paper trades on Alpaca's website?**
-A: Log in at https://app.alpaca.markets, go to Paper Trading, and click
-on "Orders" or "Positions" to see what the bot has placed.
-
-**Q: Can I change which stocks the bot watches?**
-A: Yes. Open `midas_config.py` in Cursor, find the `WATCHLIST` list, and
-add or remove ticker symbols. Stick to large-cap, liquid US stocks.
-
-**Q: When should I consider going live?**
-A: Not before completing all of these:
-- 30 full NYSE trading sessions of paper trading (about 6 weeks)
-- Maximum drawdown below 8% across those sessions
-- Sharpe ratio above 1.0
-- No single losing day exceeding 2.5% (well inside the 3% kill switch)
-- You understand every part of the log output
-
----
-
-## Getting help
-
-If you see an error, copy the **full red text** from the terminal
-(not just the last line) and share it. The most useful information
-is always the complete error traceback.
