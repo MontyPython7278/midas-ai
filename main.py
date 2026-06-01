@@ -28,6 +28,7 @@ os.environ['SSL_CERT_FILE'] = certifi.where()
 os.environ['SSL_CERT_DIR'] = os.path.dirname(certifi.where())
 # -----------------------------------------------------
 
+import argparse
 import asyncio
 import csv
 import logging
@@ -687,15 +688,135 @@ class MidasBot:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  PREFLIGHT CHECKS  (python3 main.py --check)
+# ══════════════════════════════════════════════════════════════════════════════
+
+async def run_preflight_checks(config: MidasConfig) -> bool:
+    """
+    Run five self-tests and print a ✅/❌ line for each.
+    Returns True if every check passes.
+    """
+    failures = 0
+
+    def ok(label: str) -> None:
+        print(f"  ✅  {label}")
+
+    def fail(label: str, detail: str = "") -> None:
+        nonlocal failures
+        failures += 1
+        suffix = f"  →  {detail}" if detail else ""
+        print(f"  ❌  {label}{suffix}")
+
+    print("\nMIDAS AI — Preflight Check")
+    print("─" * 52)
+
+    # ── 1. Environment variables ───────────────────────────────────
+    key    = os.getenv("ALPACA_API_KEY",    "")
+    secret = os.getenv("ALPACA_API_SECRET", "")
+    if key and secret:
+        ok(f"API keys set  (KEY …{key[-6:]})")
+    else:
+        missing = [n for n, v in [("ALPACA_API_KEY", key), ("ALPACA_API_SECRET", secret)] if not v]
+        fail("API keys", f"{', '.join(missing)} not set")
+
+    # ── 2. /v2/account — validates keys actually work ──────────────
+    headers = {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret}
+    timeout = aiohttp.ClientTimeout(total=10)
+    try:
+        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as s:
+            async with s.get(f"{config.base_url}/v2/account") as resp:
+                if resp.status == 200:
+                    data   = await resp.json()
+                    equity = float(data.get("equity", 0))
+                    ok(f"Alpaca /v2/account  (equity=${equity:,.2f})")
+                else:
+                    body = await resp.text()
+                    fail("Alpaca /v2/account", f"HTTP {resp.status}: {body[:80]}")
+    except Exception as e:
+        fail("Alpaca /v2/account", str(e)[:80])
+
+    # ── 3. /v2/clock — market status + next open/close ────────────
+    try:
+        async with aiohttp.ClientSession(headers=headers, timeout=timeout) as s:
+            async with s.get(f"{config.base_url}/v2/clock") as resp:
+                if resp.status == 200:
+                    clock      = await resp.json()
+                    is_open    = clock.get("is_open", False)
+                    next_open  = clock.get("next_open",  "?")[:19].replace("T", " ")
+                    next_close = clock.get("next_close", "?")[:19].replace("T", " ")
+                    status     = "OPEN" if is_open else "CLOSED"
+                    ok(
+                        f"Alpaca /v2/clock  (market {status} · "
+                        f"next open {next_open} · next close {next_close})"
+                    )
+                else:
+                    body = await resp.text()
+                    fail("Alpaca /v2/clock", f"HTTP {resp.status}: {body[:80]}")
+    except Exception as e:
+        fail("Alpaca /v2/clock", str(e)[:80])
+
+    # ── 4. Local directories ───────────────────────────────────────
+    dir_errors: list[str] = []
+    for path_str in [config.log_file, config.state_file]:
+        try:
+            Path(path_str).parent.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            dir_errors.append(f"{Path(path_str).parent}: {e}")
+    if dir_errors:
+        fail("Directories", "; ".join(dir_errors))
+    else:
+        base = Path.home() / "midas_ai"
+        ok(f"Directories  ({base}/logs  +  {base}/state)")
+
+    # ── 5. Required package imports ────────────────────────────────
+    missing_pkgs: list[str] = []
+    for pkg in ["aiohttp", "pandas", "numpy", "requests", "certifi"]:
+        try:
+            __import__(pkg)
+        except ImportError:
+            missing_pkgs.append(pkg)
+    if missing_pkgs:
+        fail("Python packages", f"missing: {', '.join(missing_pkgs)}")
+    else:
+        ok("Python packages  (aiohttp, pandas, numpy, requests, certifi)")
+
+    # ── Summary ────────────────────────────────────────────────────
+    print("─" * 52)
+    if failures == 0:
+        print("  ✅  READY FOR TRADING\n")
+    else:
+        noun = "CHECK" if failures == 1 else "CHECKS"
+        print(f"  ❌  {failures} {noun} FAILED — fix before running\n")
+
+    return failures == 0
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  ENTRY POINT
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="MIDAS AI — async paper/live trading bot",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Run preflight checks (API keys, connectivity, dirs, packages) and exit",
+    )
+    args = parser.parse_args()
+
     _paper_env = os.getenv("PAPER_TRADING", "1").strip().lower()
     paper_mode = _paper_env not in ("0", "false", "no", "off")
+    config     = MidasConfig(paper_trading=paper_mode)
 
-    config = MidasConfig(paper_trading=paper_mode)
-    bot    = MidasBot(config)
+    if args.check:
+        ok = asyncio.run(run_preflight_checks(config))
+        sys.exit(0 if ok else 1)
+
+    # ── Normal bot startup ─────────────────────────────────────────
+    bot = MidasBot(config)
 
     if not os.getenv("ALPACA_API_KEY") or not os.getenv("ALPACA_API_SECRET"):
         print(
