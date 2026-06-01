@@ -29,6 +29,7 @@ os.environ['SSL_CERT_DIR'] = os.path.dirname(certifi.where())
 # -----------------------------------------------------
 
 import asyncio
+import csv
 import logging
 import logging.handlers
 import signal
@@ -485,6 +486,7 @@ class MidasBot:
                         else await self.executor.fetch_balance())
         self.rm.update_peak(final_equity)
         self.rm.save_state()
+        self._append_equity_csv(final_equity)
 
         target = self.rm.get_compounded_target()
         gap    = ((final_equity / target) - 1) * 100 if target > 0 else 0
@@ -593,6 +595,25 @@ class MidasBot:
             self.log.error(f"{sym}: order failed — {oid}")
 
         return success
+
+    # ── CSV logging ───────────────────────────────────────────────────────────
+
+    def _append_equity_csv(self, equity: float) -> None:
+        csv_path = Path(self.cfg.log_file).parent / "equity_history.csv"
+        try:
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+            write_header = not csv_path.exists()
+            with csv_path.open("a", newline="") as fh:
+                writer = csv.writer(fh)
+                if write_header:
+                    writer.writerow(["timestamp", "equity", "peak_equity"])
+                writer.writerow([
+                    datetime.now(timezone.utc).isoformat(),
+                    round(equity, 4),
+                    round(self.rm.state.peak_equity, 4),
+                ])
+        except Exception as e:
+            self.log.warning(f"Equity CSV write failed (non-critical): {e}")
 
     # ── Main loop ──────────────────────────────────────────────────────────────
 

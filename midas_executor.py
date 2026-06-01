@@ -24,10 +24,12 @@ final safety net, even if the screener somehow passed it through.
 
 from __future__ import annotations
 
+import csv
 import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
 import aiohttp
@@ -206,7 +208,35 @@ class PaperTradingEngine:
             f"[{outcome.upper()}]  fees=${fees:.4f}"
         )
         self.trade_log.append(result)
+        self._append_trade_csv(result)
         return result
+
+    def _append_trade_csv(self, result: TradeResult) -> None:
+        csv_path = Path(self.cfg.log_file).parent / "trades.csv"
+        try:
+            csv_path.parent.mkdir(parents=True, exist_ok=True)
+            write_header = not csv_path.exists()
+            with csv_path.open("a", newline="") as fh:
+                writer = csv.writer(fh)
+                if write_header:
+                    writer.writerow([
+                        "timestamp", "symbol", "side",
+                        "entry_price", "exit_price", "shares",
+                        "pnl_dollar", "pnl_pct", "outcome",
+                    ])
+                writer.writerow([
+                    datetime.now(timezone.utc).isoformat(),
+                    result.symbol,
+                    result.side,
+                    result.entry_price,
+                    result.exit_price,
+                    result.shares,
+                    result.pnl_dollar,
+                    result.pnl_pct,
+                    result.outcome,
+                ])
+        except Exception as e:
+            logger.warning(f"Trade CSV write failed (non-critical): {e}")
 
     def close_all(self, current_prices: dict[str, float], reason: str = "manual") -> None:
         """Emergency / EOD close of all open positions."""
