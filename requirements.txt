@@ -7,6 +7,7 @@ numpy>=1.26.0            # Numerical operations inside indicators
 requests>=2.31.0         # Sync HTTP for Telegram alerts (non-async helper)
 certifi>=2024.0.0        # SSL certificates — required for Python 3.14 on macOS
 streamlit>=1.35.0        # Live dashboard (run with: streamlit run dashboard.py)
+pytest>=8.0.0            # Unit tests (run with: python3 -m pytest test_risk.py -v)
 
 # zoneinfo is built into Python 3.9+
 # If you are on Python 3.8 or earlier, uncomment the line below:
